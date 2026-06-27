@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>research-agent — PDF Soru-Cevap</title>
+  <style>
+    :root { --bg: #f7f7f8; --fg: #1d1d1f; --accent: #2563eb; --border: #d4d4d8; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 760px; margin: 2rem auto; padding: 0 1rem;
+      background: var(--bg); color: var(--fg); line-height: 1.5;
+    }
+    h1 { font-size: 1.4rem; }
+    section {
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    }
+    label { font-weight: 600; display: block; margin-bottom: .4rem; }
+    input[type=text], input[type=file] { width: 100%; padding: .55rem; }
+    input[type=text] { border: 1px solid var(--border); border-radius: 6px; }
+    button {
+      margin-top: .75rem; padding: .55rem 1.1rem; border: 0; border-radius: 6px;
+      background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: progress; }
+    .status { margin-top: .6rem; font-size: .9rem; color: #555; min-height: 1.2em; }
+    .answer { white-space: pre-wrap; }
+    .sources { margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: .75rem; }
+    .source { font-size: .9rem; margin-bottom: .6rem; }
+    .badge {
+      display: inline-block; background: #eef2ff; color: var(--accent);
+      border-radius: 4px; padding: 0 .4rem; font-size: .8rem; font-weight: 600;
+    }
+    .error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>research-agent · PDF Doküman Soru-Cevap</h1>
+
+  <section>
+    <label for="pdf">1) PDF yükle</label>
+    <input type="file" id="pdf" accept="application/pdf" />
+    <button id="ingestBtn">Yükle ve İşle</button>
+    <div class="status" id="ingestStatus"></div>
+  </section>
+
+  <section>
+    <label for="question">2) Soru sor</label>
+    <input type="text" id="question" placeholder="PDF hakkında bir soru yazın…" />
+    <button id="askBtn">Sor</button>
+    <div class="status" id="askStatus"></div>
+  </section>
+
+  <section id="resultSection" style="display:none">
+    <div class="answer" id="answer"></div>
+    <div class="sources" id="sources"></div>
+  </section>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function ingest() {
+      const fileInput = $("pdf");
+      if (!fileInput.files.length) {
+        $("ingestStatus").innerHTML = '<span class="error">Önce bir PDF seçin.</span>';
+        return;
+      }
+      const fd = new FormData();
+      fd.append("file", fileInput.files[0]);
+      fd.append("collection", "default");
+
+      $("ingestBtn").disabled = true;
+      $("ingestStatus").textContent = "İşleniyor…";
+      try {
+        const res = await fetch("/ingest", { method: "POST", body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Bilinmeyen hata");
+        $("ingestStatus").textContent =
+          `Tamam: ${data.filename} — ${data.pages} sayfa, ${data.chunks} chunk.`;
+      } catch (e) {
+        $("ingestStatus").innerHTML = `<span class="error">${e.message}</span>`;
+      } finally {
+        $("ingestBtn").disabled = false;
+      }
+    }
+
+    async function ask() {
+      const question = $("question").value.trim();
+      if (!question) {
+        $("askStatus").innerHTML = '<span class="error">Bir soru yazın.</span>';
+        return;
+      }
+      $("askBtn").disabled = true;
+      $("askStatus").textContent = "Yanıt aranıyor…";
+      $("resultSection").style.display = "none";
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, collection: "default", top_k: 3 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Bilinmeyen hata");
+
+        $("askStatus").textContent = "";
+        $("answer").textContent = data.answer;
+        $("sources").innerHTML =
+          "<strong>Kaynaklar</strong>" +
+          data.sources.map((s) =>
+            `<div class="source"><span class="badge">sayfa ${s.page}</span> ${escapeHtml(s.passage)}</div>`
+          ).join("");
+        $("resultSection").style.display = "block";
+      } catch (e) {
+        $("askStatus").innerHTML = `<span class="error">${e.message}</span>`;
+      } finally {
+        $("askBtn").disabled = false;
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    $("ingestBtn").addEventListener("click", ingest);
+    $("askBtn").addEventListener("click", ask);
+    $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+  </script>
+</body>
+</html>
