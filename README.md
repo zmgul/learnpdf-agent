@@ -1,30 +1,46 @@
 # learnpdf-agent
 
-> A document Q&A learning tool for any PDF.
+> A document Q&A learning tool for any PDF
 
-Upload any PDF — a book, lecture notes, a document — and ask questions about it.
-It ingests the PDF into a vector store and answers natural-language questions
-through the Claude API, **always citing its sources** (page number + passage).
+Upload a book, lecture notes or any document. Ask questions in plain language. Get answers grounded in the content with the exact source page cited.
 
-Stack: Python 3.11 · FastAPI · Pydantic v2 · Claude API · ChromaDB ·
-sentence-transformers · PyMuPDF · Poetry
+| Layer | Tech |
+|---|---|
+| Language | Python 3.11 |
+| API | FastAPI · Pydantic v2 |
+| LLM | Claude API (`claude-sonnet-4-6`) |
+| Vector DB | ChromaDB |
+| Embeddings | sentence-transformers (multilingual) |
+| PDF parsing | PyMuPDF |
+| Packaging | Poetry |
+
+<!-- Save the screenshots under images/ with the names below. -->
+
+![Upload a PDF](images/upload.png)
+
+![Ask a question](images/Q1.png)
+
+![Ask another question](images/Q2.png)
 
 ## How it works
 
-A fixed **RAG** pipeline — there is no agentic "should I search?" decision:
+A RAG flow: Each question retrieves the most relevant passages from the PDF, then sends them to Claude in a single call.
 
-1. **Ingest** — the PDF is split into overlapping, word-based chunks (manual, no
-   LangChain), embedded with a multilingual model, and stored in ChromaDB.
-   Re-ingesting the same PDF (matched by name + size) skips re-embedding.
-2. **Ask** — the question is embedded, the top-k passages are retrieved
-   automatically, then those passages + the question are sent to Claude in a
-   single call. The answer always cites the source pages.
+1. **Ingest**: The PDF is chunked, embedded, and stored in ChromaDB. Uploading a new PDF replaces the previous one.
+2. **Ask**: Your question retrieves the matching passages.
+3. **Cite**: The answer references sources inline as `[1]`, `[2]` (click to see the passage). If nothing relevant is found, it says so instead of inventing a source.
+
+## Limits
+
+- Question: max 300 characters
+- Output: `max_tokens = 512`
+- Daily quota: `MAX_QUESTIONS_PER_DAY` (default 10, set in `.env`)
 
 ## Setup
 
 ```bash
 poetry install
-cp .env.example .env        # set ANTHROPIC_API_KEY=... in .env
+cp .env.example .env   # then set ANTHROPIC_API_KEY=... in .env
 ```
 
 ## Run
@@ -35,56 +51,38 @@ poetry run uvicorn api.main:app --reload
 
 Open <http://127.0.0.1:8000>: upload a PDF, ask a question.
 
-## API
-
-```bash
-# Ingest a PDF
-curl -F "file=@book.pdf" http://127.0.0.1:8000/ingest
-
-# Ask a question
-curl -X POST http://127.0.0.1:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is the aim of the study?"}'
-```
-
 ## Project Structure
 
 ```
 learnpdf-agent/
 ├── src/
-│   ├── schemas.py          # Pydantic v2 request/response models
-│   ├── ingest.py           # PDF → manual chunking → embed → ChromaDB (+ cache)
-│   ├── retriever.py        # ChromaDB similarity query (top_k=3)
-│   ├── prompts.py          # System prompt (RAG) + formatting helpers
-│   └── agent.py            # RAG flow: auto-retrieve → single Claude call
+│   ├── schemas.py       # Pydantic models
+│   ├── ingest.py        # PDF → chunk → embed → ChromaDB
+│   ├── retriever.py     # similarity query
+│   ├── prompts.py       # system prompt
+│   └── agent.py         # RAG flow
 ├── api/
-│   └── main.py             # FastAPI endpoints (/ingest, /ask, /)
+│   └── main.py          # FastAPI endpoints
 ├── static/
-│   └── index.html          # Plain HTML + fetch() UI
+│   └── index.html       # web UI
 ├── tests/
-│   └── test_agent.py       # Schema, prompt, chunking, and mocked-agent tests
-├── data/                   # PDFs are placed here — not tracked
-├── analysis.md             # System analysis (purpose, stack, invariants)
-├── state.md                # Session checkpoint (progress, next action)
-├── .claude/CLAUDE.md       # Agent contract (rules, architecture, dev order)
-├── pyproject.toml          # Poetry dependencies
+│   └── test_agent.py    # tests
+├── data/                # PDFs (not tracked)
+├── analysis.md          # system analysis
+├── state.md             # session checkpoint
+├── pyproject.toml       # dependencies
 └── README.md
 ```
 
-The ChromaDB store is persisted under `./chroma_db/`; both `data/` and
-`chroma_db/` are git-ignored.
+`data/` and `chroma_db/` are git-ignored.
 
 ## LLM-friendly by design
 
-Three plain-text files keep an AI coding agent (e.g. Claude Code) on-task and
-context-aware across sessions:
+Three plain-text files keep an AI coding agent on-task across sessions:
 
-- **`.claude/CLAUDE.md`** — the contract: role, hard rules (allowed dirs, no
-  hardcoded keys, no LangChain/Jinja2), the RAG architecture, and the build order.
-- **`analysis.md`** — the system analysis: purpose, stack, directory map, and
-  invariants — the "why" that the code alone can't convey.
-- **`state.md`** — a running checkpoint: what changed, open decisions, and the
-  next action — so a fresh session resumes without re-discovering context.
+* `.claude/CLAUDE.md` — the contract: role, hard rules, architecture, build order
+* `analysis.md` — the why: purpose, stack, directory map, invariants
+* `state.md` — the checkpoint: what changed, open decisions, next action
 
 ## Test
 
