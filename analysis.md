@@ -1,9 +1,10 @@
-# PROJE: research-agent — Sistem Analizi
+# PROJE: learnpdf-agent — Sistem Analizi
 Sürüm: 0.1
 
 ## 1. AMAÇ
-Kullanıcının yüklediği PDF'i vektör deposuna alıp Claude API aracılığıyla
-doğal dil sorularına kaynak göstererek yanıt veren bir ReAct ajanı.
+Kullanıcının yüklediği herhangi bir PDF'i (kitap, ders notu, döküman) vektör
+deposuna alıp Claude API ile doğal dil sorularına kaynak göstererek yanıt veren
+genel bir PDF öğrenme aracı.
 
 ## 2. TEKNOLOJİ YIĞINI
 | Katman         | Teknoloji                      | Sürüm             |
@@ -22,7 +23,7 @@ doğal dil sorularına kaynak göstererek yanıt veren bir ReAct ajanı.
 
 ## 3. DİZİN HARİTASI
 ```
-research-agent/
+learnpdf-agent/
 ├── src/
 │   ├── ingest.py        # PDF → chunk → embed → ChromaDB
 │   ├── retriever.py     # ChromaDB sorgu aracı (tool)
@@ -58,6 +59,6 @@ research-agent/
 - Sonraki öncelik: `pyproject.toml` oluştur, ardından `src/schemas.py` yaz
 
 ## 6. BİLİNEN KISITLAMALAR
-- Tez PDF'i Türkçe; embedding modeli çok dilli olmalı → `paraphrase-multilingual-mpnet-base-v2` kullan
+- Yüklenen PDF'ler çok dilli olabilir (Türkçe dahil); embedding modeli çok dilli olmalı → `paraphrase-multilingual-mpnet-base-v2` kullan
 - Claude API rate limit: ücretsiz tier'da dikkatli ol
 - `data/` dizini .gitignore'a eklenir; PDF repoya push edilmez

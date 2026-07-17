@@ -1,65 +1,26 @@
-"""Sistem promptu, Claude tool-use araç tanımı ve biçimlendirme yardımcıları.
+"""Sistem promptu ve biçimlendirme yardımcıları (RAG).
 
-ReAct ajanı `retrieve` aracını kullanarak PDF'ten kaynak çeker ve yanıtını
-yalnızca bu kaynaklara dayandırır. Kaynak göstermeden yanıt verilmez.
+Bağlam pasajları soruyla birlikte Claude'a verilir; yanıt yalnızca bu
+pasajlara dayanır ve kaynak (sayfa no) gösterilir.
 """
 
 from __future__ import annotations
 
 from src.schemas import SourceChunk
 
-# ---------------------------------------------------------------------------
-# Sistem promptu
-# ---------------------------------------------------------------------------
+# --- Sistem promptu (Role / Task / Constraints / Output) ------------------
 
 SYSTEM_PROMPT = """\
-Sen bir PDF Doküman Soru-Cevap ajanısın. Görevin, kullanıcının sorusunu
-yüklenen PDF'in içeriğine dayanarak yanıtlamaktır.
-
-Çalışma kuralların:
-1. Soruyu yanıtlamak için önce `retrieve` aracını çağırarak en ilgili
-   pasajları getir. Bilgiyi asla önceden bildiğini varsayma.
-2. Yanıtını YALNIZCA getirilen pasajlara dayandır. Pasajlar soruyu
-   yanıtlamıyorsa bunu açıkça belirt; uydurma yapma.
-3. Her yanıt en az bir kaynak göstermek zorundadır: ilgili sayfa numarası
-   ve kısa bir alıntı.
-4. Gerekirse aramayı farklı anahtar kelimelerle birden fazla kez yapabilirsin.
-5. Yanıtını sorunun dilinde (genellikle Türkçe) ver; kısa ve doğru ol.
-
-Yeterli bağlamı topladığında nihai yanıtını yaz."""
+Rol: PDF içeriğine dayalı soru-cevap asistanı.
+Görev: Verilen bağlam pasajlarını kullanarak soruyu yanıtla.
+Kısıtlar:
+- Yalnızca bağlamdaki pasajlara dayan; bilgi uydurma.
+- Bağlam soruyu yanıtlamıyorsa açıkça belirt.
+- Yanıtı sorunun dilinde ver; kısa ve doğru ol.
+Çıktı: Doğrudan cevap ve dayandığın sayfa numaraları."""
 
 
-# ---------------------------------------------------------------------------
-# Claude tool-use araç tanımı
-# ---------------------------------------------------------------------------
-
-RETRIEVE_TOOL = {
-    "name": "retrieve",
-    "description": (
-        "Yüklenen PDF'ten, verilen soruya en benzer metin pasajlarını getirir. "
-        "Bilgiye dayalı her soruyu yanıtlamadan önce bu aracı çağır. "
-        "Sonuçlar sayfa numarası ve pasaj metni içerir."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Vektör deposunda aranacak sorgu metni",
-            },
-            "top_k": {
-                "type": "integer",
-                "description": "Getirilecek pasaj sayısı (varsayılan 3)",
-            },
-        },
-        "required": ["query"],
-    },
-}
-
-
-# ---------------------------------------------------------------------------
-# Biçimlendirme yardımcıları
-# ---------------------------------------------------------------------------
+# --- Biçimlendirme yardımcıları -------------------------------------------
 
 
 def format_chunks_for_tool_result(chunks: list[SourceChunk]) -> str:

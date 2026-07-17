@@ -141,6 +141,11 @@ def build_chunks(
 # --- Ana ingest -----------------------------------------------------------
 
 
+def _doc_id(pdf_path: str) -> str:
+    """PDF'i tanımlayan basit kimlik: dosya adı + bayt boyutu."""
+    return f"{os.path.basename(pdf_path)}:{os.path.getsize(pdf_path)}"
+
+
 def ingest_pdf(
     pdf_path: str,
     collection: str = "default",
@@ -149,9 +154,24 @@ def ingest_pdf(
 ) -> IngestResponse:
     """PDF'i okuyup chunk'layıp embed ederek ChromaDB'ye yazar.
 
-    Aynı dosya yeniden ingest edilirse chunk id'leri tutarlı olduğundan
-    `upsert` ile mevcut kayıtlar güncellenir (yinelenme oluşmaz).
+    Embedding cache: aynı PDF (dosya adı + boyut) koleksiyonda zaten varsa
+    yeniden embed edilmez; mevcut kayıtlardan bir özet döndürülür. Böylece
+    pahalı embedding adımı ve model yüklemesi tekrarlanmaz.
     """
+    filename = os.path.basename(pdf_path)
+    doc_id = _doc_id(pdf_path)
+    col = _collection(collection)
+
+    existing = col.get(where={"doc_id": doc_id})
+    if existing["ids"]:
+        metas = existing["metadatas"] or [{}]
+        return IngestResponse(
+            filename=filename,
+            collection=collection,
+            pages=int(metas[0].get("pages", 0)),
+            chunks=len(existing["ids"]),
+        )
+
     pages = extract_pages(pdf_path)
     chunks = build_chunks(pages, chunk_size, overlap)
 
@@ -161,16 +181,17 @@ def ingest_pdf(
             show_progress_bar=False,
             normalize_embeddings=True,
         )
-        col = _collection(collection)
         col.upsert(
             ids=[c.chunk_id for c in chunks],
             documents=[c.text for c in chunks],
-            metadatas=[{"page": c.page} for c in chunks],
+            metadatas=[
+                {"page": c.page, "doc_id": doc_id, "pages": len(pages)} for c in chunks
+            ],
             embeddings=[e.tolist() for e in embeddings],
         )
 
     return IngestResponse(
-        filename=os.path.basename(pdf_path),
+        filename=filename,
         collection=collection,
         pages=len(pages),
         chunks=len(chunks),

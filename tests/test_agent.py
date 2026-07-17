@@ -61,11 +61,6 @@ def test_format_sources_truncates_long_passage():
     assert "sayfa 1" in out
 
 
-def test_retrieve_tool_schema_shape():
-    assert prompts.RETRIEVE_TOOL["name"] == "retrieve"
-    assert "query" in prompts.RETRIEVE_TOOL["input_schema"]["required"]
-
-
 # ---------------------------------------------------------------------------
 # Chunking (ingest) — ağır bağımlılık varsa
 # ---------------------------------------------------------------------------
@@ -93,7 +88,7 @@ def test_chunk_page_overlap_must_be_smaller():
 
 
 # ---------------------------------------------------------------------------
-# Agent ReAct döngüsü — Claude API mock'lanmış
+# Agent RAG akışı — Claude API mock'lanmış
 # ---------------------------------------------------------------------------
 
 
@@ -129,24 +124,21 @@ class _FakeClient:
 def test_agent_ask_collects_sources(monkeypatch):
     agent = pytest.importorskip("src.agent")
 
-    # retrieve'i sabit bir kaynak döndürecek şekilde değiştir.
-    def fake_retrieve(query, collection="default", top_k=3):
+    # retrieve otomatik çağrılır; sabit bir kaynak döndürecek şekilde değiştir.
+    def fake_retrieve(question, collection="default", top_k=3):
         return [SourceChunk(page=4, passage="ilgili pasaj", chunk_id="p4-c0")]
 
     monkeypatch.setattr(agent, "retrieve", fake_retrieve)
 
-    # İki adımlı yanıt: önce tool_use, sonra end_turn (nihai metin).
-    responses = [
-        _Resp("tool_use", [_Block("tool_use", id="t1", input={"query": "soru"})]),
-        _Resp("end_turn", [_Block("text", text="Yanıt: 4. sayfaya göre…")]),
-    ]
+    # RAG: tek Claude çağrısı, bağlam mesaja gömülü, doğrudan cevap.
+    responses = [_Resp("end_turn", [_Block("text", text="Yanıt: 4. sayfaya göre…")])]
     monkeypatch.setattr(agent, "_client", lambda: _FakeClient(responses))
 
     result = agent.ask("PDF neyle ilgili?")
     assert result.answer.startswith("Yanıt")
     assert len(result.sources) == 1
     assert result.sources[0].page == 4
-    assert result.iterations == 2
+    assert result.iterations == 1
 
 
 def test_agent_ask_no_sources_still_returns_source(monkeypatch):

@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "research-agent"
+name = "learnpdf-agent"
 version = "0.1.0"
-description = "PDF üzerinde çalışan ReAct Document Q&A Agent — kaynak gösteren yanıtlar"
+description = "Herhangi bir PDF üzerinde soru-cevap yapılabilen genel bir öğrenme aracı — kaynak gösteren yanıtlar"
 authors = ["Zehra <zehramervegul@gmail.com>"]
 readme = "README.md"
 packages = [
