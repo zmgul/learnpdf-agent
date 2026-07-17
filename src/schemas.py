@@ -1,7 +1,8 @@
 """Pydantic v2 request/response modelleri.
 
 Tüm API sözleşmeleri (request/response) bu dosyada tek noktada tanımlanır.
-Kural: her yanıt en az bir kaynak chunk'ı (sayfa no + pasaj) içerir.
+Kural: bağlama dayanan yanıtlar kaynak (sayfa no + pasaj) gösterir; ilgili
+içerik yoksa kaynak uydurulmaz ve sources boş liste döner.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class SourceChunk(BaseModel):
     """Yanıtın dayandığı tek bir kaynak pasaj.
 
-    Her AskResponse en az bir SourceChunk içermek zorundadır.
+    AskResponse.sources bu chunk'lardan oluşur; ilgili içerik yoksa liste
+    boş olabilir (kaynak uydurulmaz).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -35,28 +37,6 @@ class SourceChunk(BaseModel):
 # ---------------------------------------------------------------------------
 # /ingest
 # ---------------------------------------------------------------------------
-
-
-class IngestRequest(BaseModel):
-    """PDF ingest isteği.
-
-    Dosya yüklemesi endpoint'te multipart/form-data ile alınır; bu model
-    yalnızca ingest davranışını ayarlayan opsiyonel parametreleri taşır.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    collection: str = Field(
-        default="default",
-        min_length=1,
-        description="Chunk'ların yazılacağı ChromaDB koleksiyon adı",
-    )
-    chunk_size: int = Field(
-        default=500, ge=100, le=2000, description="Hedef chunk boyutu (token)"
-    )
-    chunk_overlap: int = Field(
-        default=50, ge=0, le=500, description="Ardışık chunk'lar arası örtüşme (token)"
-    )
 
 
 class IngestResponse(BaseModel):
@@ -81,7 +61,10 @@ class AskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str = Field(
-        ..., min_length=1, max_length=2000, description="Kullanıcının doğal dil sorusu"
+        ...,
+        min_length=1,
+        max_length=300,
+        description="Kullanıcının doğal dil sorusu (en fazla 300 karakter)",
     )
     collection: str = Field(
         default="default",
@@ -109,16 +92,21 @@ class AskResponse(BaseModel):
         min_length=0,
         description="Yanıtın dayandığı kaynak chunk'lar; ilgili içerik yoksa boş",
     )
+    input_tokens: int = Field(default=0, ge=0, description="Bu soru için giriş token sayısı")
+    output_tokens: int = Field(default=0, ge=0, description="Bu soru için çıkış token sayısı")
+    cost_usd: float = Field(default=0.0, ge=0, description="Bu sorunun tahmini maliyeti (USD)")
 
 
 # ---------------------------------------------------------------------------
-# Hata modeli
+# /limits — kullanım limiti durumu
 # ---------------------------------------------------------------------------
 
 
-class ErrorResponse(BaseModel):
-    """Standart hata gövdesi."""
+class LimitStatus(BaseModel):
+    """Günlük soru limiti durumu (arayüzün buton durumunu ayarlaması için)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    detail: str = Field(..., description="İnsan tarafından okunabilir hata açıklaması")
+    limit: int = Field(..., ge=0, description="Günlük izin verilen toplam soru sayısı")
+    used: int = Field(..., ge=0, description="Bugün kullanılan soru sayısı")
+    remaining: int = Field(..., ge=0, description="Bugün kalan soru sayısı")

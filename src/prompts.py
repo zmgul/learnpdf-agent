@@ -17,7 +17,13 @@ Kısıtlar:
 - Yalnızca bağlamdaki pasajlara dayan; bilgi uydurma.
 - Bağlam soruyu yanıtlamıyorsa açıkça belirt.
 - Yanıtı sorunun dilinde ver; kısa ve doğru ol.
-Çıktı: Doğrudan cevap ve dayandığın sayfa numaraları."""
+- Düz metin yaz. Markdown kullanma: başlık (#), kalın (*), madde imi (-),
+  ayraç (---) yok. Gereksiz boş satır bırakma; birkaç kısa cümle/paragraf yeter.
+- Kullandığın bilgiyi, dayandığın kaynağın numarasıyla belirt: ilgili cümlenin
+  sonuna köşeli parantez içinde numara koy, örn. [1]. Numara sana verilen
+  "Kaynak N" ile birebir aynı olmalı. Birden çok kaynak için ayrı yaz: [1][2].
+  Yalnızca gerçekten kullandığın kaynakları göster.
+Çıktı: Doğrudan, sade cevap (kaynak atıflarıyla)."""
 
 
 # --- Biçimlendirme yardımcıları -------------------------------------------
@@ -32,14 +38,3 @@ def format_chunks_for_context(chunks: list[SourceChunk]) -> str:
         f"[Kaynak {i} | sayfa {chunk.page}]\n{chunk.passage}"
         for i, chunk in enumerate(chunks, start=1)
     )
-
-
-def format_sources_for_answer(chunks: list[SourceChunk], max_chars: int = 200) -> str:
-    """Kaynakları kullanıcıya gösterilecek kısa özet biçimine dönüştürür."""
-    lines: list[str] = []
-    for chunk in chunks:
-        passage = chunk.passage.strip().replace("\n", " ")
-        if len(passage) > max_chars:
-            passage = passage[:max_chars].rstrip() + "…"
-        lines.append(f"- (sayfa {chunk.page}) {passage}")
-    return "\n".join(lines)

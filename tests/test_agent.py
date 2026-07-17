@@ -55,13 +55,6 @@ def test_format_chunks_includes_page():
     assert "bir metin" in out
 
 
-def test_format_sources_truncates_long_passage():
-    long_passage = "a" * 500
-    out = prompts.format_sources_for_answer([SourceChunk(page=1, passage=long_passage)])
-    assert "…" in out
-    assert "sayfa 1" in out
-
-
 # ---------------------------------------------------------------------------
 # Chunking (ingest) — ağır bağımlılık varsa
 # ---------------------------------------------------------------------------
@@ -200,7 +193,8 @@ def test_agent_ask_collects_sources(monkeypatch):
     agent = pytest.importorskip("src.agent")
 
     # retrieve otomatik çağrılır; sabit bir kaynak döndürecek şekilde değiştir.
-    def fake_retrieve(question, collection="default", top_k=3):
+    # İmza gerçek retrieve ile uyumlu (özet yolu min_score geçirir).
+    def fake_retrieve(question, collection="default", top_k=3, min_score=None):
         return [SourceChunk(page=4, passage="ilgili pasaj", chunk_id="p4-c0")]
 
     monkeypatch.setattr(agent, "retrieve", fake_retrieve)
@@ -218,6 +212,34 @@ def test_agent_ask_collects_sources(monkeypatch):
     assert fake.messages.call_count == 1
 
 
+def test_summary_query_detection():
+    """Özet/genel bakış ifadeleri özet olarak algılanmalı; özel sorular değil."""
+    agent = pytest.importorskip("src.agent")
+    for q in ["pdfi özetle", "özet çıkar", "metni özetle", "bu metin ne anlatıyor",
+              "konusu ne", "summarize this"]:
+        assert agent._is_summary_query(q), q
+    for q in ["kırlangıçlar neden ayrıldı", "kaç sayfa var", "yazar kim"]:
+        assert not agent._is_summary_query(q), q
+
+
+def test_summary_query_bypasses_threshold(monkeypatch):
+    """Özet sorgusunda retrieve eşiksiz (min_score=0.0) çağrılmalı."""
+    agent = pytest.importorskip("src.agent")
+    seen = {}
+
+    def fake_retrieve(question, collection="default", top_k=3, min_score=None):
+        seen["min_score"] = min_score
+        return [SourceChunk(page=1, passage="p", chunk_id="p1-c0")]
+
+    monkeypatch.setattr(agent, "retrieve", fake_retrieve)
+    monkeypatch.setattr(
+        agent, "_client",
+        lambda: _FakeClient([_Resp("end_turn", [_Block("text", text="Özet…")])]),
+    )
+    agent.ask("pdfi özetle")
+    assert seen["min_score"] == 0.0
+
+
 def test_agent_ask_no_sources_returns_empty_and_says_so(monkeypatch):
     agent = pytest.importorskip("src.agent")
 
@@ -229,3 +251,33 @@ def test_agent_ask_no_sources_returns_empty_and_says_so(monkeypatch):
     # Kaynak uydurulmaz: ilgili pasaj yoksa sources boş döner.
     assert result.sources == []
     assert result.answer
+
+
+# ---------------------------------------------------------------------------
+# API /ask kota davranışı — başarısız yanıt kotayı tüketmemeli
+# ---------------------------------------------------------------------------
+
+
+def test_failed_ask_does_not_consume_quota(monkeypatch):
+    """agent_ask hata verirse günlük kota düşülmemeli; başarıda düşülmeli."""
+    main = pytest.importorskip("api.main")
+    from fastapi.testclient import TestClient
+    from src.schemas import AskResponse
+
+    main._question_counter.update({"date": "", "count": 0})  # sayacı sıfırla
+    client = TestClient(main.app)
+
+    # 1) agent_ask hata fırlatır → 503, kota düşmez (used=0).
+    monkeypatch.setattr(main, "agent_ask", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("anahtar yok")))
+    r = client.post("/ask", json={"question": "soru"})
+    assert r.status_code == 503
+    assert client.get("/limits").json()["used"] == 0
+
+    # 2) agent_ask başarılı → 200, kota bir düşer (used=1).
+    monkeypatch.setattr(
+        main, "agent_ask",
+        lambda *a, **k: AskResponse(answer="cevap", sources=[]),
+    )
+    r = client.post("/ask", json={"question": "soru"})
+    assert r.status_code == 200
+    assert client.get("/limits").json()["used"] == 1

@@ -3,99 +3,251 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>learnpdf-agent — PDF Soru-Cevap</title>
+  <title>learnpdf-agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>" />
   <style>
-    :root { --bg: #f7f7f8; --fg: #1d1d1f; --accent: #2563eb; --border: #d4d4d8; }
+    :root {
+      color-scheme: dark;
+      --bg: #1C1917;
+      --card-bg: #2A2523;
+      --border: #3D3532;
+      --text: #E8E1D9;
+      --accent: #C9A227;
+      /* türetilmiş / işlevsel renkler (yalnızca yukarıdaki değişkenlere veya
+         siyah/beyaz karışımına bağlı; kurallarda hardcoded hex yok) */
+      --muted: color-mix(in srgb, var(--text) 55%, transparent);
+      --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+      --accent-dark: color-mix(in srgb, var(--accent) 85%, black);
+      --error: #E86A5C; --ok: #6FBF73;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.55);
+      --radius: 14px;
+    }
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      max-width: 760px; margin: 2rem auto; padding: 0 1rem;
-      background: var(--bg); color: var(--fg); line-height: 1.5;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem;
+      min-height: 100vh; line-height: 1.55; color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 50% -10%, var(--card-bg), transparent 70%),
+        var(--bg);
+      background-attachment: fixed;
     }
-    h1 { font-size: 1.4rem; }
-    section {
-      background: #fff; border: 1px solid var(--border); border-radius: 8px;
-      padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+
+    header { text-align: center; margin-bottom: 2rem; }
+    h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; letter-spacing: -.02em;
+      margin: 0 0 .4rem;
+      background: linear-gradient(120deg, var(--accent), color-mix(in srgb, var(--accent) 65%, white));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    label { font-weight: 600; display: block; margin-bottom: .4rem; }
-    input[type=text], input[type=file] { width: 100%; padding: .55rem; }
-    input[type=text] { border: 1px solid var(--border); border-radius: 6px; }
+
+    .card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 1.25rem 1.35rem; margin-bottom: 1.25rem;
+    }
+    .card > label {
+      display: block; font-weight: 600; font-size: .82rem; letter-spacing: .03em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: .7rem;
+    }
+
+    /* --- Yükleme alanı (sürükle-bırak) --- */
+    .drop {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: .35rem; text-align: center;
+      padding: 1.6rem 1rem;
+      border: 1.5px dashed color-mix(in srgb, var(--accent) 35%, var(--border));
+      border-radius: 12px; cursor: pointer;
+      color: color-mix(in srgb, var(--accent) 80%, transparent);
+      background: transparent; transition: border-color .18s, background .18s, color .18s;
+    }
+    .drop:hover, .drop:focus-visible { border-color: var(--accent); color: var(--text); outline: none; }
+    .drop.dragover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+    .drop svg { width: 26px; height: 26px; stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
+    input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+    /* --- Soru satırı --- */
+    .ask-row { display: flex; gap: .6rem; }
+    .char-count { margin-top: .45rem; font-size: .78rem; color: var(--muted); text-align: right; }
+    .char-count.at-limit { color: var(--accent); font-weight: 600; }
+    input[type=text] {
+      flex: 1; padding: .7rem .85rem; font-size: 1rem; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    input[type=text]::placeholder { color: var(--muted); }
+    input[type=text]:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
     button {
-      margin-top: .75rem; padding: .55rem 1.1rem; border: 0; border-radius: 6px;
-      background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+      padding: .7rem 1.3rem; font-size: .95rem; font-weight: 600; color: var(--bg);
+      border: 0; border-radius: 10px; cursor: pointer; white-space: nowrap;
+      background: var(--accent);
+      transition: transform .12s, background .18s, box-shadow .18s;
+      box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 32%, transparent);
     }
-    button:disabled { opacity: .6; cursor: progress; }
-    .status { margin-top: .6rem; font-size: .9rem; color: #555; min-height: 1.2em; }
-    .answer { white-space: pre-wrap; }
-    .sources { margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: .75rem; }
-    .source { font-size: .9rem; margin-bottom: .6rem; }
+    button:hover { background: var(--accent-dark); transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    button:disabled { opacity: .55; cursor: progress; transform: none; box-shadow: none; }
+
+    /* --- Durum metni + spinner --- */
+    .status { margin-top: .75rem; font-size: .88rem; color: var(--muted); min-height: 1.2em;
+      display: flex; align-items: center; gap: .45rem; }
+    /* Boşken hiç yer kaplamasın — soru kartı altındaki fazla boşluğu önler. */
+    .status:empty { margin-top: 0; min-height: 0; }
+    .status.error { color: var(--error); }
+    .status.ok { color: var(--ok); font-weight: 600; }
+    .status .fname { font-size: 1.08rem; font-weight: 700; }
+    .status.loading::before {
+      content: ""; width: 14px; height: 14px; border-radius: 50%; flex: none;
+      border: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      border-top-color: var(--accent); animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* --- Sohbet / sonuç --- */
+    #chat > .card { animation: rise .25s ease; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .cost-line {
+      margin-top: 1rem; padding-top: .7rem; border-top: 1px dashed var(--border);
+      font-size: .78rem; color: var(--muted);
+    }
+    .cost-line b { color: var(--accent); font-weight: 700; }
+
+    /* --- Kaynak atıfları (NotebookLM tarzı) --- */
+    .cite {
+      cursor: pointer; user-select: none; vertical-align: super; line-height: 1;
+      font-size: .62rem; font-weight: 700; color: var(--bg); background: var(--accent);
+      padding: .04rem .3rem; border-radius: 4px; margin: 0 .12rem;
+    }
+    .cite:hover, .cite:focus, .src-ref:hover { filter: brightness(1.12); outline: none; }
+    .src-ref { cursor: pointer; }
+    .src-page { color: var(--muted); font-weight: 600; font-size: .8rem; margin: 0 .35rem 0 .1rem; }
+    #citePopup {
+      position: absolute; z-index: 50; max-width: 340px; max-height: 260px; overflow: auto;
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: var(--shadow); padding: .8rem .9rem; font-size: .85rem; color: var(--text);
+    }
+    .cite-pop-head { margin-bottom: .45rem; }
+    .cite-pop-body { line-height: 1.55; white-space: pre-wrap; }
+    .answer-label {
+      font-size: .82rem; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: .5rem;
+    }
+    .answer-label.spaced { margin-top: 1.25rem; }
+    .qa-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .5rem; }
+    .q-count { font-size: .78rem; font-weight: 600; color: var(--accent); }
+    .asked-question { font-size: 1.02rem; font-weight: 600; }
+    .answer { white-space: pre-wrap; font-size: 1.02rem; }
+    .sources { margin-top: 1.35rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+    .sources-title { font-size: .82rem; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: .7rem; }
+    .source {
+      font-size: .9rem; color: var(--text); margin-bottom: .6rem; padding: .7rem .85rem;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .source:last-child { margin-bottom: 0; }
     .badge {
-      display: inline-block; background: #eef2ff; color: var(--accent);
-      border-radius: 4px; padding: 0 .4rem; font-size: .8rem; font-weight: 600;
+      display: inline-block; margin-right: .5rem; padding: .1rem .5rem;
+      background: var(--accent-soft); color: var(--accent); font-size: .74rem;
+      font-weight: 700; border-radius: 999px; vertical-align: baseline;
     }
-    .error { color: #b91c1c; }
-    .no-source { color: #777; font-style: italic; }
+    .no-source { color: var(--muted); font-style: italic; }
   </style>
 </head>
 <body>
-  <h1>learnpdf-agent · PDF Doküman Soru-Cevap</h1>
+  <header>
+    <h1>PDF'ini Yükle, Sorularını Sor</h1>
+  </header>
 
-  <section>
-    <label for="pdf">1) PDF yükle</label>
+  <section class="card">
+    <label for="pdf">PDF yükle</label>
+    <label class="drop" id="dropZone" for="pdf" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+      </svg>
+      <span>bir pdf seçin ya da sürükleyin.</span>
+    </label>
     <input type="file" id="pdf" accept="application/pdf" />
-    <button id="ingestBtn">Yükle ve İşle</button>
     <div class="status" id="ingestStatus"></div>
   </section>
 
-  <section>
-    <label for="question">2) Soru sor</label>
-    <input type="text" id="question" placeholder="PDF hakkında bir soru yazın…" />
-    <button id="askBtn">Sor</button>
+  <section class="card">
+    <label for="question">Soru sor</label>
+    <div class="ask-row">
+      <input type="text" id="question" maxlength="300" placeholder="PDF hakkında bir soru yazın…" />
+      <button id="askBtn">Sor</button>
+    </div>
+    <div class="char-count" id="charCount">0/300</div>
     <div class="status" id="askStatus"></div>
   </section>
 
-  <section id="resultSection" style="display:none">
-    <div class="answer" id="answer"></div>
-    <div class="sources" id="sources"></div>
-  </section>
+  <div id="chat"></div>
 
   <script>
     const $ = (id) => document.getElementById(id);
 
+    // Durum metnini tek yerden yönet (loading/ok/error stilleri).
+    function setStatus(el, text, state) {
+      el.className = "status" + (state ? " " + state : "");
+      el.textContent = text;
+    }
+
+    // Yalnızca PDF: hem MIME tipini hem uzantıyı kontrol et (bazı PDF'lerde tip boş gelebilir).
+    function isPdf(file) {
+      return file && (file.type === "application/pdf" ||
+                      file.name.toLowerCase().endsWith(".pdf"));
+    }
+
     async function ingest() {
       const fileInput = $("pdf");
-      if (!fileInput.files.length) {
-        $("ingestStatus").innerHTML = '<span class="error">Önce bir PDF seçin.</span>';
+      if (!fileInput.files.length) return;
+      if (!isPdf(fileInput.files[0])) {
+        setStatus($("ingestStatus"), "Yalnızca PDF dosyaları kabul edilir.", "error");
+        fileInput.value = "";
         return;
       }
+
       const fd = new FormData();
       fd.append("file", fileInput.files[0]);
       fd.append("collection", "default");
 
-      $("ingestBtn").disabled = true;
-      $("ingestStatus").textContent = "İşleniyor…";
+      // Yükleme sırasında input'u kilitle; kullanıcı bir şey olmadığını sanmasın.
+      fileInput.disabled = true;
+      setStatus($("ingestStatus"), "İşleniyor…", "loading");
       try {
         const res = await fetch("/ingest", { method: "POST", body: fd });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Bilinmeyen hata");
-        $("ingestStatus").textContent =
-          `Tamam: ${data.filename} — ${data.pages} sayfa, ${data.chunks} chunk.`;
+        // Önek yok; dosya adı büyük, ardından "yüklendi." gösterilir.
+        const el = $("ingestStatus");
+        el.className = "status ok";
+        el.innerHTML = `<span><span class="fname">${escapeHtml(data.filename)}</span> yüklendi.</span>`;
       } catch (e) {
-        $("ingestStatus").innerHTML = `<span class="error">${e.message}</span>`;
+        setStatus($("ingestStatus"), e.message, "error");
       } finally {
-        $("ingestBtn").disabled = false;
+        fileInput.disabled = false;
       }
     }
 
+    let asking = false;  // istek uçuşta mı? (Enter ile çift göndermeyi önler)
+
     async function ask() {
-      const question = $("question").value.trim();
-      if (!question) {
-        $("askStatus").innerHTML = '<span class="error">Bir soru yazın.</span>';
+      if (asking) return;  // devam eden istek varken yeni istek gönderme
+      if (limitReached) {
+        setStatus($("askStatus"), "Günlük soru limitine ulaşıldı.", "error");
         return;
       }
+      const question = $("question").value.trim();
+      if (!question) {
+        setStatus($("askStatus"), "Bir soru yazın.", "error");
+        return;
+      }
+      asking = true;
       $("askBtn").disabled = true;
-      $("askStatus").textContent = "Yanıt aranıyor…";
-      $("resultSection").style.display = "none";
+      setStatus($("askStatus"), "Yanıt aranıyor…", "loading");
       try {
         const res = await fetch("/ask", {
           method: "POST",
@@ -105,20 +257,19 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Bilinmeyen hata");
 
-        $("askStatus").textContent = "";
-        $("answer").textContent = data.answer;
-        // sources boş olabilir: bağlamda ilgili pasaj yoksa kaynak uydurulmaz.
-        $("sources").innerHTML = data.sources.length
-          ? "<strong>Kaynaklar</strong>" +
-            data.sources.map((s) =>
-              `<div class="source"><span class="badge">sayfa ${s.page}</span> ${escapeHtml(s.passage)}</div>`
-            ).join("")
-          : '<div class="source no-source">Bu soruyla ilgili kaynak bulunamadı.</div>';
-        $("resultSection").style.display = "block";
+        setStatus($("askStatus"), "", "");
+        // Kotayı tazele, sonra bu soru-cevabı sohbete ekle (eskiler kaybolmaz).
+        await refreshLimits();
+        appendQA(question, data, lastLimits);
+        // Sor'dan sonra soru alanını temizle (soru artık sohbette görünüyor).
+        $("question").value = "";
+        updateCounter();
       } catch (e) {
-        $("askStatus").innerHTML = `<span class="error">${e.message}</span>`;
+        setStatus($("askStatus"), e.message, "error");
+        await refreshLimits();
       } finally {
-        $("askBtn").disabled = false;
+        asking = false;
+        updateAskState();
       }
     }
 
@@ -128,9 +279,143 @@
       return div.innerHTML;
     }
 
-    $("ingestBtn").addEventListener("click", ingest);
+    // Model bazen "Markdown kullanma" talimatına rağmen #/**/*/--- üretir;
+    // düz metin gösterdiğimiz için bu işaretleri temizle (güvenlik ağı).
+    function stripMarkdown(t) {
+      return t
+        .replace(/^\s{0,3}#{1,6}\s*/gm, "")       // # başlıklar
+        .replace(/^\s*[-*_]{3,}\s*$/gm, "")        // --- yatay ayraç
+        .replace(/\*\*(.+?)\*\*/g, "$1")           // **kalın**
+        .replace(/__(.+?)__/g, "$1")               // __kalın__
+        .replace(/\*(.+?)\*/g, "$1")               // *italik*
+        .replace(/`([^`]+)`/g, "$1");              // `kod`
+    }
+
+    // Yanıt metnindeki [N] atıflarını tıklanabilir üst-simge rozetlere çevirir.
+    function renderAnswer(text, sources) {
+      const clean = stripMarkdown(text).replace(/\n{2,}/g, "\n").trim();
+      return escapeHtml(clean).replace(/\[(\d+)\]/g, (m, n) => {
+        const idx = parseInt(n, 10) - 1;
+        if (idx < 0 || idx >= sources.length) return m;  // geçersiz numara: olduğu gibi
+        return `<sup class="cite" data-n="${idx}" tabindex="0" role="button" title="Kaynağı gör">${n}</sup>`;
+      });
+    }
+
+    // Soru-cevabı sohbete yeni bir kart olarak ekler (eskiler kaybolmaz).
+    function appendQA(question, data, limits) {
+      const card = document.createElement("section");
+      card.className = "card";
+      // Atıflar metnin içinde ([N] → tıklanınca popup); ayrı kaynak listesi yok.
+      // Yalnızca hiç kaynak yoksa kısa bir not göster.
+      const noSrc = data.sources.length
+        ? ""
+        : '<div class="sources"><div class="source no-source">Bu soruyla ilgili kaynak bulunamadı.</div></div>';
+      const total = (data.input_tokens || 0) + (data.output_tokens || 0);
+      const tokens = `<b>${total} token</b> · ${data.input_tokens} giriş + ${data.output_tokens} çıkış`;
+      card.innerHTML =
+        '<div class="qa-head"><span class="answer-label" style="margin-bottom:0">Soru</span>' +
+        `<span class="q-count">${limits.used}/${limits.limit}</span></div>` +
+        '<div class="asked-question"></div>' +
+        '<div class="answer-label spaced">Yanıt</div>' +
+        '<div class="answer"></div>' +
+        noSrc +
+        `<div class="cost-line">${tokens}</div>`;
+      // Soruyu güvenli şekilde ata; yanıtı [N] atıfları rozetlenmiş olarak bas.
+      card.querySelector(".asked-question").textContent = question;
+      card.querySelector(".answer").innerHTML = renderAnswer(data.answer, data.sources);
+      card._sources = data.sources;  // popup'ın erişmesi için kaynakları sakla
+      $("chat").prepend(card);  // en yeni soru-cevap üstte; öncekiler aşağı kayar
+      card.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    const MAX_CHARS = 300;
+    let limitReached = false;
+    let lastLimits = { limit: 10, used: 0, remaining: 10 };
+
+    // "Sor" butonu yalnızca günlük kota dolunca pasifleşir.
+    // (300 karakter maxlength ile zaten aşılamaz; tam 300'lük soru sorulabilir.)
+    function updateAskState() {
+      $("askBtn").disabled = limitReached;
+    }
+
+    // Canlı karakter sayacı (ör. "247/300").
+    function updateCounter() {
+      const n = $("question").value.length;
+      const el = $("charCount");
+      el.textContent = n + "/" + MAX_CHARS;
+      el.classList.toggle("at-limit", n >= MAX_CHARS);
+      updateAskState();
+    }
+
+    // Günlük kota durumunu sunucudan al; dolduysa butonu pasifleştir + mesaj göster.
+    async function refreshLimits() {
+      try {
+        const res = await fetch("/limits");
+        lastLimits = await res.json();
+        limitReached = lastLimits.remaining <= 0;
+        if (limitReached) setStatus($("askStatus"), "Günlük soru limitine ulaşıldı.", "error");
+      } catch (e) {
+        limitReached = false;
+      }
+      updateAskState();
+    }
+
+    // Dosya seçilir seçilmez otomatik yükle — ayrı bir butona gerek yok.
+    $("pdf").addEventListener("change", ingest);
     $("askBtn").addEventListener("click", ask);
+    $("question").addEventListener("input", updateCounter);
     $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+
+    // --- Kaynak popup'ı (atıf numarasına/kaynak rozetine tıklayınca) ---
+    const citePopup = document.createElement("div");
+    citePopup.id = "citePopup";
+    citePopup.style.display = "none";
+    document.body.appendChild(citePopup);
+
+    function showCite(ref) {
+      const card = ref.closest(".card");
+      const src = card && card._sources && card._sources[parseInt(ref.dataset.n, 10)];
+      if (!src) return;
+      citePopup.innerHTML =
+        `<div class="cite-pop-head"><span class="badge">sayfa ${src.page}</span></div>` +
+        `<div class="cite-pop-body">${escapeHtml(src.passage)}</div>`;
+      citePopup.style.display = "block";
+      const r = ref.getBoundingClientRect();
+      const maxLeft = document.documentElement.clientWidth - citePopup.offsetWidth - 12;
+      citePopup.style.top = (window.scrollY + r.bottom + 6) + "px";
+      citePopup.style.left = (window.scrollX + Math.min(r.left, Math.max(8, maxLeft))) + "px";
+    }
+
+    document.addEventListener("click", (e) => {
+      const ref = e.target.closest && e.target.closest("[data-n]");
+      if (ref && ref.closest("#chat")) { e.stopPropagation(); showCite(ref); return; }
+      if (!(e.target.closest && e.target.closest("#citePopup"))) citePopup.style.display = "none";
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") citePopup.style.display = "none";
+      if (e.key === "Enter" && e.target.classList && e.target.classList.contains("cite")) showCite(e.target);
+    });
+
+    // İlk yükleme: sayaç ve kota durumunu hazırla.
+    updateCounter();
+    refreshLimits();
+
+    // Sürükle-bırak: dosyayı input'a aktar ve yüklemeyi tetikle.
+    const dz = $("dropZone");
+    ["dragenter", "dragover"].forEach((ev) =>
+      dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("dragover"); }));
+    ["dragleave", "drop"].forEach((ev) =>
+      dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("dragover"); }));
+    dz.addEventListener("drop", (e) => {
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      if (!isPdf(file)) {
+        setStatus($("ingestStatus"), "Yalnızca PDF dosyaları kabul edilir.", "error");
+        return;
+      }
+      $("pdf").files = e.dataTransfer.files;
+      ingest();
+    });
   </script>
 </body>
 </html>

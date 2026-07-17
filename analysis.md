@@ -50,6 +50,9 @@ learnpdf-agent/
 - Claude API anahtarı yalnızca `.env` üzerinden okunur; kodda hardcode yasak
 - Bağlama dayanan her yanıt kaynak göstermeli; bağlamda ilgili içerik
   bulunamazsa yanıt bunu açıkça belirtmeli ve kaynak uydurmamalı
+- Soru en fazla 300 karakterle sınırlı (aşımda HTTP 400); günlük toplam soru
+  sayısı MAX_QUESTIONS_PER_DAY (.env, varsayılan 10) ile sınırlı, Claude
+  çıktı tavanı max_tokens=512 (token verimliliği)
 - Vektör DB yalnızca `src/ingest.py` üzerinden doldurulur
 - Tüm request/response modelleri `src/schemas.py` içinde Pydantic v2 ile tanımlanır
 - Bağımlılık yönetimi yalnızca Poetry; `pip install` doğrudan kullanılmaz
