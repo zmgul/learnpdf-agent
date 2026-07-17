@@ -1,13 +1,14 @@
 """RAG akışı + Claude API.
 
-Sabit boru hattı (ReAct değil):
+Sabit boru hattı:
   soru → retriever.retrieve ile otomatik bağlam çekimi →
   bağlam + soru tek bir Claude çağrısına verilir → yanıt üretilir.
 Modelin "arama yapayım mı" kararı yoktur; retrieve her zaman çalışır.
 
 Kurallar:
   - API anahtarı yalnızca ortam değişkeninden (ANTHROPIC_API_KEY) okunur.
-  - Her yanıt kaynak içermek zorundadır; kaynak yoksa bu açıkça bildirilir.
+  - Bağlama dayanan yanıtlar kaynak gösterir; ilgili içerik yoksa yanıt bunu
+    açıkça belirtir ve kaynak uydurulmaz (sources boş döner).
 """
 
 from __future__ import annotations
@@ -17,9 +18,9 @@ import os
 import anthropic
 from dotenv import load_dotenv
 
-from src.prompts import SYSTEM_PROMPT, format_chunks_for_tool_result
+from src.prompts import SYSTEM_PROMPT, format_chunks_for_context
 from src.retriever import DEFAULT_TOP_K, retrieve
-from src.schemas import AskResponse, SourceChunk
+from src.schemas import AskResponse
 
 load_dotenv()
 
@@ -41,7 +42,7 @@ def ask(
 ) -> AskResponse:
     """Soruyu RAG akışıyla yanıtlar: otomatik retrieve → tek Claude çağrısı."""
     chunks = retrieve(question, collection=collection, top_k=top_k)
-    context = format_chunks_for_tool_result(chunks)
+    context = format_chunks_for_context(chunks)
 
     response = _client().messages.create(
         model=MODEL,
@@ -54,16 +55,11 @@ def ask(
     ).strip()
 
     if not chunks:
-        # Kaynak gösterimi zorunlu; hiç pasaj getirilmediyse bunu açıkça belirt.
+        # İlgili pasaj yok: kaynak uydurma, durumu açıkça bildir.
         return AskResponse(
             answer=answer_text
-            or "Soruyu yanıtlayacak ilgili bir kaynak PDF'te bulunamadı.",
-            sources=[
-                SourceChunk(
-                    page=1,
-                    passage="(Uygun kaynak bulunamadı — önce bir PDF ingest edildiğinden emin olun.)",
-                )
-            ],
+            or "Soruyu yanıtlayacak ilgili bir pasaj PDF'te bulunamadı.",
+            sources=[],
         )
 
     return AskResponse(answer=answer_text or "Yanıt üretilemedi.", sources=chunks)

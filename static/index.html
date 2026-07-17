@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>research-agent — PDF Soru-Cevap</title>
+  <title>learnpdf-agent — PDF Soru-Cevap</title>
   <style>
     :root { --bg: #f7f7f8; --fg: #1d1d1f; --accent: #2563eb; --border: #d4d4d8; }
     * { box-sizing: border-box; }
@@ -34,10 +34,11 @@
       border-radius: 4px; padding: 0 .4rem; font-size: .8rem; font-weight: 600;
     }
     .error { color: #b91c1c; }
+    .no-source { color: #777; font-style: italic; }
   </style>
 </head>
 <body>
-  <h1>research-agent · PDF Doküman Soru-Cevap</h1>
+  <h1>learnpdf-agent · PDF Doküman Soru-Cevap</h1>
 
   <section>
     <label for="pdf">1) PDF yükle</label>
@@ -106,11 +107,13 @@
 
         $("askStatus").textContent = "";
         $("answer").textContent = data.answer;
-        $("sources").innerHTML =
-          "<strong>Kaynaklar</strong>" +
-          data.sources.map((s) =>
-            `<div class="source"><span class="badge">sayfa ${s.page}</span> ${escapeHtml(s.passage)}</div>`
-          ).join("");
+        // sources boş olabilir: bağlamda ilgili pasaj yoksa kaynak uydurulmaz.
+        $("sources").innerHTML = data.sources.length
+          ? "<strong>Kaynaklar</strong>" +
+            data.sources.map((s) =>
+              `<div class="source"><span class="badge">sayfa ${s.page}</span> ${escapeHtml(s.passage)}</div>`
+            ).join("")
+          : '<div class="source no-source">Bu soruyla ilgili kaynak bulunamadı.</div>';
         $("resultSection").style.display = "block";
       } catch (e) {
         $("askStatus").innerHTML = `<span class="error">${e.message}</span>`;

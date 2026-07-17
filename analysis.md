@@ -26,8 +26,8 @@ genel bir PDF öğrenme aracı.
 learnpdf-agent/
 ├── src/
 │   ├── ingest.py        # PDF → chunk → embed → ChromaDB
-│   ├── retriever.py     # ChromaDB sorgu aracı (tool)
-│   ├── agent.py         # ReAct döngüsü, Claude API çağrıları
+│   ├── retriever.py     # ChromaDB bağlam çekme adımı
+│   ├── agent.py         # RAG akışı (otomatik retrieve → tek Claude çağrısı)
 │   ├── schemas.py       # Pydantic modelleri (request/response)
 │   └── prompts.py       # Sistem promptu ve şablonlar
 ├── api/
@@ -48,7 +48,8 @@ learnpdf-agent/
 ## 4. TEMEL DEĞİŞMEZLER
 - PDF yalnızca `data/` dizinine yerleştirilir; başka yol kabul edilmez
 - Claude API anahtarı yalnızca `.env` üzerinden okunur; kodda hardcode yasak
-- Her yanıt mutlaka kaynak chunk'ı (sayfa no + pasaj) içerir
+- Bağlama dayanan her yanıt kaynak göstermeli; bağlamda ilgili içerik
+  bulunamazsa yanıt bunu açıkça belirtmeli ve kaynak uydurmamalı
 - Vektör DB yalnızca `src/ingest.py` üzerinden doldurulur
 - Tüm request/response modelleri `src/schemas.py` içinde Pydantic v2 ile tanımlanır
 - Bağımlılık yönetimi yalnızca Poetry; `pip install` doğrudan kullanılmaz

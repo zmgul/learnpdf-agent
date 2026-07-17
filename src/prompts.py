@@ -23,10 +23,10 @@ Kısıtlar:
 # --- Biçimlendirme yardımcıları -------------------------------------------
 
 
-def format_chunks_for_tool_result(chunks: list[SourceChunk]) -> str:
-    """Getirilen chunk'ları Claude'a tool_result olarak verilecek metne çevirir."""
+def format_chunks_for_context(chunks: list[SourceChunk]) -> str:
+    """Getirilen chunk'ları Claude mesajına gömülecek bağlam metnine çevirir."""
     if not chunks:
-        return "Bu sorguya uygun pasaj bulunamadı. Farklı anahtar kelimelerle dene."
+        return "Bağlam boş: bu soruya uygun pasaj bulunamadı."
 
     return "\n\n".join(
         f"[Kaynak {i} | sayfa {chunk.page}]\n{chunk.passage}"

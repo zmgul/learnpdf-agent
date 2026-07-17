@@ -1,7 +1,7 @@
 """FastAPI uygulaması — /ingest, /ask endpoint'leri ve statik arayüz.
 
   POST /ingest : PDF yükle → data/'ya kaydet → ingest_pdf → IngestResponse
-  POST /ask    : AskRequest → agent.ask → AskResponse
+  POST /ask    : AskRequest → agent.ask (RAG) → AskResponse
   GET  /       : static/index.html arayüzünü servis et
 
 Hatalar HTTPException (ErrorResponse gövdesi) ile döner.
@@ -23,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-app = FastAPI(title="research-agent", description="PDF ReAct Document Q&A Agent")
+app = FastAPI(title="learnpdf-agent", description="PDF RAG Document Q&A Agent")
 
 
 @app.get("/")
@@ -60,7 +60,7 @@ async def ingest(
 
 @app.post("/ask", response_model=AskResponse)
 def ask(request: AskRequest) -> AskResponse:
-    """Doğal dil sorusunu ReAct ajanıyla yanıtlar (kaynak gösterir)."""
+    """Doğal dil sorusunu RAG akışıyla yanıtlar (kaynak gösterir)."""
     try:
         return agent_ask(
             request.question,

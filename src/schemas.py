@@ -96,17 +96,18 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     """Ajanın ürettiği yanıt ve dayandığı kaynaklar.
 
-    `sources` en az bir öğe içermelidir — kaynaksız yanıt geçersizdir.
+    Bağlama dayanan yanıtlar kaynak gösterir. Bağlamda ilgili içerik
+    bulunamazsa `sources` boş liste döner — kaynak uydurulmaz; yanıt
+    metni durumu açıkça belirtir.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     answer: str = Field(..., min_length=1, description="Claude'un ürettiği nihai yanıt")
     sources: list[SourceChunk] = Field(
-        ..., min_length=1, description="Yanıtın dayandığı kaynak chunk'lar"
-    )
-    iterations: int = Field(
-        default=1, ge=1, description="ReAct döngüsünün tamamlanma adım sayısı"
+        ...,
+        min_length=0,
+        description="Yanıtın dayandığı kaynak chunk'lar; ilgili içerik yoksa boş",
     )
 
 

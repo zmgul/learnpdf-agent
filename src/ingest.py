@@ -14,6 +14,7 @@ Kurallar:
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -99,11 +100,15 @@ def chunk_page(
     text: str,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     overlap: int = DEFAULT_CHUNK_OVERLAP,
+    doc_key: str = "",
 ) -> list[Chunk]:
     """Bir sayfanın metnini kelime tabanlı, örtüşmeli chunk'lara böler.
 
     Token yaklaşıklığı olarak boşlukla ayrılmış kelimeler kullanılır
     (harici tokenizer bağımlılığı eklemeden manuel yaklaşım).
+
+    `doc_key` chunk_id'ye önek olarak girer; böylece aynı koleksiyona birden
+    fazla PDF alındığında farklı belgelerin chunk'ları çakışmaz.
     """
     if overlap >= chunk_size:
         raise ValueError("overlap, chunk_size'dan küçük olmalı")
@@ -119,7 +124,8 @@ def chunk_page(
         if not window:
             break
         piece = " ".join(window)
-        chunk_id = f"p{page}-c{start // step}"
+        prefix = f"{doc_key}-" if doc_key else ""
+        chunk_id = f"{prefix}p{page}-c{start // step}"
         chunks.append(Chunk(chunk_id=chunk_id, page=page, text=piece))
         if start + chunk_size >= len(words):
             break
@@ -130,11 +136,12 @@ def build_chunks(
     pages: list[tuple[int, str]],
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     overlap: int = DEFAULT_CHUNK_OVERLAP,
+    doc_key: str = "",
 ) -> list[Chunk]:
     """Tüm sayfaları sırayla chunk'lara böler."""
     chunks: list[Chunk] = []
     for page, text in pages:
-        chunks.extend(chunk_page(page, text, chunk_size, overlap))
+        chunks.extend(chunk_page(page, text, chunk_size, overlap, doc_key))
     return chunks
 
 
@@ -146,6 +153,11 @@ def _doc_id(pdf_path: str) -> str:
     return f"{os.path.basename(pdf_path)}:{os.path.getsize(pdf_path)}"
 
 
+def _doc_key(doc_id: str) -> str:
+    """doc_id'den ChromaDB ID'sinde kullanılabilir kısa, deterministik önek üretir."""
+    return hashlib.sha1(doc_id.encode("utf-8")).hexdigest()[:8]
+
+
 def ingest_pdf(
     pdf_path: str,
     collection: str = "default",
@@ -154,7 +166,11 @@ def ingest_pdf(
 ) -> IngestResponse:
     """PDF'i okuyup chunk'layıp embed ederek ChromaDB'ye yazar.
 
-    Embedding cache: aynı PDF (dosya adı + boyut) koleksiyonda zaten varsa
+    Tek belge semantiği: uygulama aynı anda yalnızca tek PDF üzerinde çalışır.
+    Yeni bir PDF alınınca koleksiyondaki önceki belge silinir; böylece sorgular
+    yalnızca son yüklenen belgeden yanıtlanır (çapraz-belge karışması olmaz).
+
+    Embedding cache: aynı PDF (dosya adı + boyut) koleksiyonda zaten yüklüyse
     yeniden embed edilmez; mevcut kayıtlardan bir özet döndürülür. Böylece
     pahalı embedding adımı ve model yüklemesi tekrarlanmaz.
     """
@@ -172,8 +188,13 @@ def ingest_pdf(
             chunks=len(existing["ids"]),
         )
 
+    # Yeni belge → tek belge kuralı gereği önceki belgeyi koleksiyondan temizle.
+    prior_ids = col.get()["ids"]
+    if prior_ids:
+        col.delete(ids=prior_ids)
+
     pages = extract_pages(pdf_path)
-    chunks = build_chunks(pages, chunk_size, overlap)
+    chunks = build_chunks(pages, chunk_size, overlap, doc_key=_doc_key(doc_id))
 
     if chunks:
         embeddings = _embedder().encode(

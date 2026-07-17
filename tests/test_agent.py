@@ -23,9 +23,10 @@ def test_source_chunk_page_must_be_positive():
         SourceChunk(page=0, passage="x")
 
 
-def test_ask_response_requires_at_least_one_source():
-    with pytest.raises(Exception):
-        AskResponse(answer="yanıt", sources=[])
+def test_ask_response_allows_empty_sources():
+    """İlgili içerik yoksa kaynak uydurulmaz; boş liste geçerlidir."""
+    resp = AskResponse(answer="ilgili pasaj bulunamadı", sources=[])
+    assert resp.sources == []
 
 
 def test_ask_response_valid():
@@ -33,7 +34,7 @@ def test_ask_response_valid():
         answer="yanıt",
         sources=[SourceChunk(page=3, passage="ilgili pasaj")],
     )
-    assert resp.iterations == 1
+    assert resp.answer == "yanıt"
     assert resp.sources[0].page == 3
 
 
@@ -43,13 +44,13 @@ def test_ask_response_valid():
 
 
 def test_format_chunks_empty():
-    out = prompts.format_chunks_for_tool_result([])
+    out = prompts.format_chunks_for_context([])
     assert "bulunamadı" in out.lower()
 
 
 def test_format_chunks_includes_page():
     chunks = [SourceChunk(page=7, passage="bir metin")]
-    out = prompts.format_chunks_for_tool_result(chunks)
+    out = prompts.format_chunks_for_context(chunks)
     assert "sayfa 7" in out
     assert "bir metin" in out
 
@@ -87,6 +88,78 @@ def test_chunk_page_overlap_must_be_smaller():
         ingest.chunk_page(page=1, text="a b c", chunk_size=10, overlap=10)
 
 
+def test_chunk_ids_do_not_collide_across_documents():
+    """Aynı koleksiyona iki farklı PDF alındığında chunk_id'ler çakışmamalı."""
+    ingest = pytest.importorskip("src.ingest")
+    pages = [(1, "a b c"), (2, "d e f")]
+
+    key_a = ingest._doc_key("kitap.pdf:1000")
+    key_b = ingest._doc_key("ders-notu.pdf:2000")
+    ids_a = {c.chunk_id for c in ingest.build_chunks(pages, doc_key=key_a)}
+    ids_b = {c.chunk_id for c in ingest.build_chunks(pages, doc_key=key_b)}
+
+    assert ids_a and ids_b
+    assert not (ids_a & ids_b), "farklı belgelerin chunk_id'leri çakışıyor"
+
+
+def test_doc_key_is_deterministic():
+    """Aynı PDF yeniden ingest edilince aynı chunk_id'ler üretilmeli (cache/upsert)."""
+    ingest = pytest.importorskip("src.ingest")
+    assert ingest._doc_key("kitap.pdf:1000") == ingest._doc_key("kitap.pdf:1000")
+
+
+class _FakeCollection:
+    """ingest_pdf'i ağır bağımlılık olmadan sınamak için sahte koleksiyon."""
+
+    def __init__(self):
+        self.ids: list[str] = []
+        self.metas: list[dict] = []
+
+    def get(self, where=None, include=None):
+        if where and "doc_id" in where:
+            keep = [
+                (i, m) for i, m in zip(self.ids, self.metas)
+                if m.get("doc_id") == where["doc_id"]
+            ]
+            return {"ids": [i for i, _ in keep], "metadatas": [m for _, m in keep]}
+        return {"ids": list(self.ids), "metadatas": list(self.metas)}
+
+    def delete(self, ids):
+        keep = [(i, m) for i, m in zip(self.ids, self.metas) if i not in set(ids)]
+        self.ids = [i for i, _ in keep]
+        self.metas = [m for _, m in keep]
+
+    def upsert(self, ids, documents, metadatas, embeddings):
+        self.ids.extend(ids)
+        self.metas.extend(metadatas)
+
+
+def test_new_pdf_replaces_previous_single_document(monkeypatch):
+    """Yeni PDF alınınca koleksiyonda yalnızca son belge kalmalı (tek belge kuralı)."""
+    ingest = pytest.importorskip("src.ingest")
+
+    fake = _FakeCollection()
+    monkeypatch.setattr(ingest, "_collection", lambda name="default": fake)
+    class _Vec(list):
+        def tolist(self):
+            return list(self)
+
+    monkeypatch.setattr(ingest, "_embedder",
+                        lambda: type("E", (), {"encode": lambda self, xs, **k: [_Vec([0.0]) for _ in xs]})())
+    monkeypatch.setattr(ingest, "extract_pages", lambda p: [(1, "tek sayfa metni")])
+    # doc_id dosya yolundan üretiliyor; getsize'ı sabitle.
+    monkeypatch.setattr(ingest.os.path, "getsize", lambda p: 111)
+
+    ingest.ingest_pdf("kitap_a.pdf")
+    doc_ids_after_a = {m["doc_id"] for m in fake.metas}
+    assert doc_ids_after_a == {"kitap_a.pdf:111"}
+
+    ingest.ingest_pdf("kitap_b.pdf")
+    doc_ids_after_b = {m["doc_id"] for m in fake.metas}
+    # A tamamen gitmeli, yalnızca B kalmalı.
+    assert doc_ids_after_b == {"kitap_b.pdf:111"}
+
+
 # ---------------------------------------------------------------------------
 # Agent RAG akışı — Claude API mock'lanmış
 # ---------------------------------------------------------------------------
@@ -111,8 +184,10 @@ class _Resp:
 class _FakeMessages:
     def __init__(self, responses):
         self._responses = list(responses)
+        self.call_count = 0
 
     def create(self, **kwargs):
+        self.call_count += 1
         return self._responses.pop(0)
 
 
@@ -132,16 +207,18 @@ def test_agent_ask_collects_sources(monkeypatch):
 
     # RAG: tek Claude çağrısı, bağlam mesaja gömülü, doğrudan cevap.
     responses = [_Resp("end_turn", [_Block("text", text="Yanıt: 4. sayfaya göre…")])]
-    monkeypatch.setattr(agent, "_client", lambda: _FakeClient(responses))
+    fake = _FakeClient(responses)
+    monkeypatch.setattr(agent, "_client", lambda: fake)
 
     result = agent.ask("PDF neyle ilgili?")
     assert result.answer.startswith("Yanıt")
     assert len(result.sources) == 1
     assert result.sources[0].page == 4
-    assert result.iterations == 1
+    # Sabit RAG akışı: bağlam mesaja gömülü olduğu için tek Claude çağrısı yeter.
+    assert fake.messages.call_count == 1
 
 
-def test_agent_ask_no_sources_still_returns_source(monkeypatch):
+def test_agent_ask_no_sources_returns_empty_and_says_so(monkeypatch):
     agent = pytest.importorskip("src.agent")
 
     monkeypatch.setattr(agent, "retrieve", lambda *a, **k: [])
@@ -149,5 +226,6 @@ def test_agent_ask_no_sources_still_returns_source(monkeypatch):
     monkeypatch.setattr(agent, "_client", lambda: _FakeClient(responses))
 
     result = agent.ask("alakasız soru")
-    # Kaynak gösterimi zorunlu: boşken bile en az bir SourceChunk dönmeli.
-    assert len(result.sources) >= 1
+    # Kaynak uydurulmaz: ilgili pasaj yoksa sources boş döner.
+    assert result.sources == []
+    assert result.answer
